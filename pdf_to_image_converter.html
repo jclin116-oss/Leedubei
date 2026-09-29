@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="zh-TW" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF 轉圖片線上工具 (PDF to Image Converter)</title>
+    <!-- Tailwind CSS for modern responsive styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Inter Font -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- FontAwesome for clean icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- PDF.js for parsing PDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <!-- FileSaver.js for triggering downloads -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <script>
+        // Configure PDF.js worker
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    </script>
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .drag-active { border-color: #3b82f6 !important; background-color: #eff6ff !important; }
+        /* Custom scrollbar for preview grid */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 h-full flex flex-col antialiased">
+
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center text-white shadow-md shadow-blue-200">
+                    <i class="fa-solid fa-file-pdf text-xl"></i>
+                </div>
+                <div>
+                    <h1 class="text-lg font-bold text-slate-900 leading-tight">PDF轉圖片</h1>
+                    <p class="text-xs text-slate-500">里長群組用leedubei v1</p>
+                </div>
+            </div>
+            <div class="flex items-center space-x-2">
+                <button onclick="resetApp()" id="resetBtn" class="hidden text-sm px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-100 transition font-medium text-slate-700 flex items-center space-x-1.5">
+                    <i class="fa-solid fa-rotate-right text-xs"></i>
+                    <span>重新上傳</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 flex flex-col">
+        
+        <!-- Upload Section -->
+        <div id="uploadSection" class="flex-1 flex flex-col justify-center items-center">
+            <div class="w-full max-w-2xl bg-white border-2 border-dashed border-slate-300 rounded-3xl p-10 text-center shadow-sm hover:border-blue-500 transition-all duration-300 cursor-pointer group" id="dropZone">
+                <input type="file" id="fileInput" accept="application/pdf" class="hidden">
+                <div class="w-20 h-20 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-5 group-hover:scale-110 transition duration-300 shadow-inner">
+                    <i class="fa-solid fa-cloud-arrow-up text-3xl"></i>
+                </div>
+                <h2 class="text-xl font-semibold text-slate-800 mb-2">點擊或拖曳 PDF 檔案至此</h2>
+                <p class="text-sm text-slate-500 mb-6 max-w-sm mx-auto">支援任意頁數的 PDF 文件，所有轉換均在瀏覽器端本地完成，安全且快速。</p>
+                <button type="button" onclick="document.getElementById('fileInput').click()" class="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-xl shadow-md shadow-blue-200 transition duration-200 inline-flex items-center space-x-2">
+                    <i class="fa-solid fa-folder-open"></i>
+                    <span>選擇 PDF 檔案</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Progress / Loading Section -->
+        <div id="progressSection" class="hidden flex-1 flex flex-col justify-center items-center">
+            <div class="w-full max-w-md bg-white border border-slate-200 rounded-2xl p-8 text-center shadow-lg">
+                <div class="relative w-20 h-20 mx-auto mb-6">
+                    <div class="absolute inset-0 border-4 border-blue-100 rounded-full"></div>
+                    <div class="absolute inset-0 border-4 border-blue-600 rounded-full animate-spin border-t-transparent"></div>
+                    <div class="absolute inset-0 flex items-center justify-center text-blue-600 font-bold text-sm" id="progressPercent">0%</div>
+                </div>
+                <h3 id="progressTitle" class="text-lg font-bold text-slate-900 mb-1">正在解析 PDF 檔案...</h3>
+                <p id="progressDesc" class="text-sm text-slate-500 mb-6">請稍候，正在讀取頁面結構</p>
+                <div class="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
+                    <div id="progressBar" class="bg-blue-600 h-2.5 rounded-full transition-all duration-300" style="width: 0%"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Workspace / Result Section -->
+        <div id="workspaceSection" class="hidden flex-1 flex flex-col">
+            <!-- Toolbar & Controls -->
+            <div class="bg-white border border-slate-200 rounded-2xl p-4 mb-6 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
+                <div class="flex flex-wrap items-center gap-4 w-full md:w-auto">
+                    <div class="flex items-center space-x-2">
+                        <span class="text-sm font-medium text-slate-600">檔案名稱:</span>
+                        <span id="fileNameDisplay" class="text-sm font-bold text-slate-900 truncate max-w-xs">document.pdf</span>
+                    </div>
+                    <div class="h-4 w-px bg-slate-200 hidden md:block"></div>
+                    <div class="flex items-center space-x-2">
+                        <span class="text-sm font-medium text-slate-600">圖片格式:</span>
+                        <select id="imageFormat" class="bg-slate-50 border border-slate-300 rounded-lg px-3 py-1.5 text-sm font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <option value="image/png">PNG (高畫質)</option>
+                            <option value="image/jpeg">JPEG (小檔案)</option>
+                        </select>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        <span class="text-sm font-medium text-slate-600">解析度倍率:</span>
+                        <select id="imageScale" class="bg-slate-50 border border-slate-300 rounded-lg px-3 py-1.5 text-sm font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <option value="1">1x (標準)</option>
+                            <option value="1.5">1.5x (清晰)</option>
+                            <option value="2" selected>2x (高畫質)</option>
+                            <option value="3">3x (極高清)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="flex items-center space-x-3 w-full md:w-auto justify-end">
+                    <button onclick="reprocessPDF()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium rounded-xl text-sm transition flex items-center space-x-2">
+                        <i class="fa-solid fa-sliders"></i>
+                        <span>重新渲染</span>
+                    </button>
+                    <button onclick="downloadAllImages()" id="downloadAllBtn" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-medium rounded-xl text-sm shadow-md shadow-emerald-200 transition flex items-center space-x-2">
+                        <i class="fa-solid fa-download"></i>
+                        <span id="downloadAllText">下載全部圖片</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Previews Grid -->
+            <div class="flex-1 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 overflow-y-auto pb-6" id="previewGrid">
+                <!-- Dynamic cards populated here -->
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Custom Modal / Notification Alert -->
+    <div id="alertModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl text-center">
+            <div id="alertIcon" class="w-14 h-14 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center mx-auto mb-4 text-2xl">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+            </div>
+            <h3 id="alertTitle" class="text-lg font-bold text-slate-900 mb-2">提示訊息</h3>
+            <p id="alertMessage" class="text-sm text-slate-600 mb-6">發生了一些狀況...</p>
+            <button onclick="closeAlert()" class="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-xl transition shadow-md shadow-blue-200">確定</button>
+        </div>
+    </div>
+
+    <script>
+        // Global state variables
+        let currentPdfFile = null;
+        let pdfDoc = null;
+        let totalPages = 0;
+        let renderedPagesData = []; // Store base64 or blob data for download
+
+        // DOM elements
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const uploadSection = document.getElementById('uploadSection');
+        const progressSection = document.getElementById('progressSection');
+        const workspaceSection = document.getElementById('workspaceSection');
+        const progressBar = document.getElementById('progressBar');
+        const progressPercent = document.getElementById('progressPercent');
+        const progressTitle = document.getElementById('progressTitle');
+        const progressDesc = document.getElementById('progressDesc');
+        const previewGrid = document.getElementById('previewGrid');
+        const fileNameDisplay = document.getElementById('fileNameDisplay');
+        const resetBtn = document.getElementById('resetBtn');
+
+        // Drag and drop setup
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropZone.addEventListener(eventName, (e) => {
+                e.preventDefault();
+                dropZone.classList.add('drag-active');
+            }, false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, (e) => {
+                e.preventDefault();
+                dropZone.classList.remove('drag-active');
+            }, false);
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            if (files.length > 0) {
+                handleFile(files[0]);
+            }
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleFile(e.target.files[0]);
+            }
+        });
+
+        // Custom modal helper instead of alert()
+        function showAlert(title, message, isError = false) {
+            const modal = document.getElementById('alertModal');
+            document.getElementById('alertTitle').innerText = title;
+            document.getElementById('alertMessage').innerText = message;
+            const iconDiv = document.getElementById('alertIcon');
+            if (isError) {
+                iconDiv.className = "w-14 h-14 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto mb-4 text-2xl";
+                iconDiv.innerHTML = '<i class="fa-solid fa-circle-exclamation"></i>';
+            } else {
+                iconDiv.className = "w-14 h-14 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center mx-auto mb-4 text-2xl";
+                iconDiv.innerHTML = '<i class="fa-solid fa-circle-check"></i>';
+            }
+            modal.classList.remove('hidden');
+        }
+
+        function closeAlert() {
+            document.getElementById('alertModal').classList.add('hidden');
+        }
+
+        // Handle uploaded file
+        async function handleFile(file) {
+            if (file.type !== 'application/pdf') {
+                showAlert('格式錯誤', '請上傳有效的 PDF 檔案 (.pdf)', true);
+                return;
+            }
+            currentPdfFile = file;
+            fileNameDisplay.innerText = file.name;
+            
+            uploadSection.classList.add('hidden');
+            progressSection.classList.remove('hidden');
+            
+            try {
+                const arrayBuffer = await file.arrayBuffer();
+                const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+                pdfDoc = await loadingTask.promise;
+                totalPages = pdfDoc.numPages;
+
+                await renderAllPages();
+            } catch (error) {
+                console.error(error);
+                showAlert('解析失敗', '無法讀取該 PDF 檔案，可能檔案已損毀或加密。', true);
+                resetApp();
+            }
+        }
+
+        // Render all pages with progress indicator
+        async function renderAllPages() {
+            renderedPagesData = [];
+            previewGrid.innerHTML = '';
+            
+            const format = document.getElementById('imageFormat').value;
+            const scale = parseFloat(document.getElementById('imageScale').value);
+            const ext = format === 'image/jpeg' ? 'jpg' : 'png';
+
+            for (let i = 1; i <= totalPages; i++) {
+                // Update progress
+                const percent = Math.round(((i - 1) / totalPages) * 100);
+                progressBar.style.width = `${percent}%`;
+                progressPercent.innerText = `${percent}%`;
+                progressTitle.innerText = `正在渲染第 ${i} / ${totalPages} 頁...`;
+                progressDesc.innerText = `解析度倍率: ${scale}x`;
+
+                const page = await pdfDoc.getPage(i);
+                const viewport = page.getViewport({ scale: scale });
+                
+                const canvas = document.createElement('canvas');
+                const context = canvas.getContext('2d');
+                canvas.height = viewport.height;
+                canvas.width = viewport.width;
+
+                await page.render({
+                    canvasContext: context,
+                    viewport: viewport
+                }).promise;
+
+                const dataUrl = canvas.toDataURL(format, 0.92);
+                const baseName = currentPdfFile.name.replace(/\.[^/.]+$/, "");
+                const fileName = `${baseName}_p${i}.${ext}`;
+
+                renderedPagesData.push({
+                    pageNumber: i,
+                    dataUrl: dataUrl,
+                    fileName: fileName
+                });
+
+                // Yield briefly to keep UI responsive
+                await new Promise(resolve => setTimeout(resolve, 10));
+            }
+
+            // Finish loading
+            progressBar.style.width = '100%';
+            progressPercent.innerText = '100%';
+            
+            setTimeout(() => {
+                progressSection.classList.add('hidden');
+                workspaceSection.classList.remove('hidden');
+                resetBtn.classList.remove('hidden');
+                buildPreviewCards();
+            }, 300);
+        }
+
+        // Build the preview cards in the workspace grid
+        function buildPreviewCards() {
+            previewGrid.innerHTML = '';
+            renderedPagesData.forEach((item, index) => {
+                const card = document.createElement('div');
+                card.className = "bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition flex flex-col group";
+                card.innerHTML = `
+                    <div class="relative bg-slate-100 aspect-[3/4] flex items-center justify-center overflow-hidden border-b border-slate-100">
+                        <img src="${item.dataUrl}" alt="Page ${item.pageNumber}" class="object-contain w-full h-full group-hover:scale-105 transition duration-300">
+                        <div class="absolute top-3 left-3 bg-slate-900/70 backdrop-blur-md text-white text-xs font-semibold px-2.5 py-1 rounded-lg">
+                            第 ${item.pageNumber} 頁
+                        </div>
+                    </div>
+                    <div class="p-4 flex items-center justify-between mt-auto bg-white">
+                        <span class="text-xs font-medium text-slate-500 truncate mr-2" title="${item.fileName}">${item.fileName}</span>
+                        <button onclick="downloadSingle(${index})" class="px-3 py-1.5 bg-blue-50 hover:bg-blue-600 text-blue-600 hover:text-white font-medium rounded-lg text-xs transition flex items-center space-x-1 shrink-0">
+                            <i class="fa-solid fa-download"></i>
+                            <span>下載</span>
+                        </button>
+                    </div>
+                `;
+                previewGrid.appendChild(card);
+            });
+        }
+
+        // Reprocess PDF when format or scale changes
+        async function reprocessPDF() {
+            if (!pdfDoc) return;
+            workspaceSection.classList.add('hidden');
+            progressSection.classList.remove('hidden');
+            await renderAllPages();
+        }
+
+        // Download a single page image
+        function downloadSingle(index) {
+            const item = renderedPagesData[index];
+            saveAs(item.dataUrl, item.fileName);
+        }
+
+        // Batch download all pages as individual files with delay to prevent browser block
+        async function downloadAllImages() {
+            const btn = document.getElementById('downloadAllBtn');
+            const btnText = document.getElementById('downloadAllText');
+            btn.disabled = true;
+            
+            let completed = 0;
+            btnText.innerText = `正在下載 (0/${renderedPagesData.length})...`;
+
+            for (let i = 0; i < renderedPagesData.length; i++) {
+                const item = renderedPagesData[i];
+                saveAs(item.dataUrl, item.fileName);
+                completed++;
+                btnText.innerText = `正在下載 (${completed}/${renderedPagesData.length})...`;
+                // Brief delay between downloads to prevent browser multi-download blocking
+                await new Promise(resolve => setTimeout(resolve, 300));
+            }
+
+            btn.disabled = false;
+            btnText.innerText = "下載全部圖片";
+            showAlert('下載完成', `已成功發起全部 ${renderedPagesData.length} 張圖片的下載！`);
+        }
+
+        // Reset application state
+        function resetApp() {
+            currentPdfFile = null;
+            pdfDoc = null;
+            totalPages = 0;
+            renderedPagesData = [];
+            fileInput.value = '';
+            workspaceSection.classList.add('hidden');
+            progressSection.classList.add('hidden');
+            uploadSection.classList.remove('hidden');
+            resetBtn.classList.add('hidden');
+        }
+    </script>
+</body>
+</html>
