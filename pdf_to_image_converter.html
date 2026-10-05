@@ -256,7 +256,7 @@
                 const percent = Math.round(((i - 1) / totalPages) * 100);
                 progressBar.style.width = `${percent}%`;
                 progressPercent.innerText = `${percent}%`;
-                progressTitle.innerText = `正在渲染第 ${i} / ${totalPages} 頁...`;
+                progressTitle.innerText = `正在分割第 ${i} / ${totalPages} 頁...`;
                 progressDesc.innerText = `解析度倍率: ${scale}x`;
 
                 const page = await pdfDoc.getPage(i);
